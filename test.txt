@@ -1,0 +1,4 @@
+!*+-/=<> <= == // operators
+// Hello moma
+"Hello Sailor"
+1234.0
