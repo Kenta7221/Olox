@@ -9,7 +9,7 @@ import "core:fmt"
 // Changes:
 // Add to default case switch in scanner lox error message
 // Change somewhere the bool for checking an errors
-// Functionality of adding the token. Do not add always a lexeme? (Fucking DEFINITELY)
+// Clean the messy ass code you stinky bitch
 
 main :: proc() {
     // if len(os.args) > 1 {

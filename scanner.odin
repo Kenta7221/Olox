@@ -9,13 +9,13 @@ import "core:strconv"
 import vmem "core:mem/virtual"
 
 Scanner :: struct {
-    tokens: [dynamic]Token,
-    keywords: map[string]TokenType,
-    source: string,
-    arena: vmem.Arena,
-    start: int,
-    curr: int,
-    line: int
+    tokens   : [dynamic]Token,
+    keywords : map[string]TokenType,
+    source   : string,
+    arena    : vmem.Arena,
+    start    : int,
+    curr     : int,
+    line     : int
 }
 
 scanner_init :: proc(source: string) -> (scanner: Scanner) {
@@ -23,22 +23,22 @@ scanner_init :: proc(source: string) -> (scanner: Scanner) {
     scanner.tokens = make([dynamic]Token, 0, 16)
 
     scanner.keywords = make(map[string]TokenType, len(TokenType))
-    scanner.keywords["and"] = TokenType.AND
-    scanner.keywords["class"] = TokenType.CLASS
-    scanner.keywords["else"] = TokenType.ELSE
-    scanner.keywords["false"] = TokenType.FALSE
-    scanner.keywords["for"] = TokenType.FOR
-    scanner.keywords["fun"] = TokenType.FUN
-    scanner.keywords["if"] = TokenType.IF
-    scanner.keywords["nil"] = TokenType.NIL
-    scanner.keywords["or"] = TokenType.OR
-    scanner.keywords["print"] = TokenType.PRINT
-    scanner.keywords["return"] = TokenType.RETURN
-    scanner.keywords["super"] = TokenType.SUPER
-    scanner.keywords["this"] = TokenType.THIS
-    scanner.keywords["true"] = TokenType.TRUE
-    scanner.keywords["var"] = TokenType.VAR
-    scanner.keywords["while"] = TokenType.WHILE
+    scanner.keywords["and"]    = .AND
+    scanner.keywords["class"]  = .CLASS
+    scanner.keywords["else"]   = .ELSE
+    scanner.keywords["false"]  = .FALSE
+    scanner.keywords["for"]    = .FOR
+    scanner.keywords["fun"]    = .FUN
+    scanner.keywords["if"]     = .IF
+    scanner.keywords["nil"]    = .NIL
+    scanner.keywords["or"]     = .OR
+    scanner.keywords["print"]  = .PRINT
+    scanner.keywords["return"] = .RETURN
+    scanner.keywords["super"]  = .SUPER
+    scanner.keywords["this"]   = .THIS
+    scanner.keywords["true"]   = .TRUE
+    scanner.keywords["var"]    = .VAR
+    scanner.keywords["while"]  = .WHILE
     
     scan_tokens(&scanner)
     
@@ -57,16 +57,16 @@ scan_tokens :: proc(scanner: ^Scanner) {
         
         switch b {
         // One character lexemes
-        case '(': add_token(scanner, TokenType.LEFT_PAREN)
-        case ')': add_token(scanner, TokenType.RIGHT_PAREN)
-        case '{': add_token(scanner, TokenType.LEFT_BRACE)
-        case '}': add_token(scanner, TokenType.RIGHT_BRACE)
-        case ',': add_token(scanner, TokenType.COMMA)
-        case '.': add_token(scanner, TokenType.DOT)
-        case '-': add_token(scanner, TokenType.MINUS)
-        case '+': add_token(scanner, TokenType.PLUS)
-        case ';': add_token(scanner, TokenType.SEMICOLON)
-        case '*': add_token(scanner, TokenType.STAR)
+        case '(': add_token(scanner, .LEFT_PAREN)
+        case ')': add_token(scanner, .RIGHT_PAREN)
+        case '{': add_token(scanner, .LEFT_BRACE)
+        case '}': add_token(scanner, .RIGHT_BRACE)
+        case ',': add_token(scanner, .COMMA)
+        case '.': add_token(scanner, .DOT)
+        case '-': add_token(scanner, .MINUS)
+        case '+': add_token(scanner, .PLUS)
+        case ';': add_token(scanner, .SEMICOLON)
+        case '*': add_token(scanner, .STAR)
         // Potentialy two character lexemes
         case '!':
             token := TokenType.BANG_EQUAL if match(&scanner.source, &scanner.curr, '=') else TokenType.BANG
@@ -81,11 +81,26 @@ scan_tokens :: proc(scanner: ^Scanner) {
             token := TokenType.GREATER_EQUAL if match(&scanner.source, &scanner.curr, '=') else TokenType.GREATER
             add_token(scanner, token)
         case '/':
-            if !match(&scanner.source, &scanner.curr, '/') {
-                add_token(scanner, TokenType.SLASH)
+            if match(&scanner.source, &scanner.curr, '/') {
+                for peek(&scanner.source, scanner.curr) != '\n' do scanner.curr += 1
                 break
             }
-            for peek(&scanner.source, scanner.curr) != '\n' do scanner.curr += 1
+
+            if match(&scanner.source, &scanner.curr, '*') {
+                for peek(&scanner.source, scanner.curr) != '*' && peek_next(&scanner.source, scanner.curr) != '/' {
+                    scanner.curr += 1
+
+                    if peek(&scanner.source, scanner.curr) == '\n' do scanner.line += 1
+
+                    if scanner.curr >= len(scanner.source) {
+                        fmt.eprintln("Missing closing brackets for multi line comments")
+                        return
+                    }
+                }
+                break;
+            }
+            
+            add_token(scanner, .SLASH)
         case '"':
             parse_string(scanner)
         case ' ':
@@ -128,7 +143,7 @@ parse_digit :: proc(scanner: ^Scanner) {
         fmt.eprintln("Could not parse the string into number literal")
     }
 
-    add_token(scanner, TokenType.NUMBER, literal)
+    add_token(scanner, .NUMBER, literal)
 }
 
 @(private="file")
@@ -147,7 +162,7 @@ parse_string :: proc(scanner: ^Scanner) {
     
     literal: TokenLiteral
     literal, _ = strings.substring(scanner.source, scanner.start, scanner.curr)
-    add_token(scanner, TokenType.STRING, literal)
+    add_token(scanner, .STRING, literal)
     
     // The closing "
     scanner.curr += 1
@@ -167,7 +182,7 @@ parse_identifier :: proc(scanner: ^Scanner) {
     }
 
     type, ok := scanner.keywords[str]
-    if !ok do type = TokenType.IDENTIFIER
+    if !ok do type = TokenTyp.IDENTIFIER
 
     add_token(scanner, type)
 }
@@ -261,8 +276,10 @@ load_file :: proc(filepath: string) -> (string, vmem.Arena) {
 @(private="file")
 is_digit :: proc(b: u8) -> bool { return b >= '0' && b <= '9' }
 
+@(private="file")
 is_alpha :: proc(b: u8) -> bool {
     return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b == '_')
 }
 
+@(private="file")
 is_alpha_numeric :: proc(b: u8) -> bool { return is_digit(b) || is_alpha(b) }

@@ -2,3 +2,4 @@
 // Hello moma
 "Hello Sailor"
 1234.0
+/* Hello from multicomment! */
