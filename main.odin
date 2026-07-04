@@ -19,10 +19,17 @@ main :: proc() {
     //     os.exit(1)
     // }
 
-    scanner := scanner_init("test.txt")
-    defer scanner_delete(&scanner)
-
+    // Step 1: Scan the tokens:
+    scanner_init("test.txt")
+    defer scanner_delete()
+    
     for token in scanner.tokens {
         fmt.println(token)
     }
+
+    // Step 2: Parse the tokens into an ast tree
+    expr := parser_init(scanner.tokens)
+    defer parser_delete()
+    
+    fmt.println(ast_print(expr))
 }

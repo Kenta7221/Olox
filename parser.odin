@@ -61,10 +61,40 @@ Parser :: struct {
 
 parser: Parser
 
-parser_init :: proc(parser: ^Parser, tokens: [dynamic]Token) {
+parser_init :: proc(tokens: [dynamic]Token) -> ^Expr {
     parser.tokens = slice.clone_to_dynamic(tokens[:])
-    
-    //
+    return parse()
+}
+
+parser_delete :: proc() {
+    delete(parser.tokens)
+}
+
+
+parse :: proc() -> ^Expr {
+    exp := expression()
+    if parser.had_error do return nil
+    return exp
+}
+
+sychronize :: proc() {
+    advance()
+
+    for !is_at_end() {
+        if previous().type == .SEMICOLON do return
+
+        #partial switch peek().type {
+        case .CLASS:
+        case .FUN:
+        case .VAR:
+        case .FOR:
+        case .IF:
+        case .WHILE:
+        case .PRINT:
+        case .RETURN:
+            return
+        }
+    }
 }
 
 @(private="file")
@@ -111,7 +141,7 @@ term :: proc() -> ^Expr {
 @(private="file")
 factor :: proc() -> ^Expr {
     expr := unary()
-    for match(.MINUS, .PLUS) {
+    for match(.STAR, .SLASH) {
         op := previous()
         right := unary()
         expr = make_binary(expr, op, right)
@@ -140,10 +170,11 @@ primary :: proc() -> ^Expr {
 
     if match(.LEFT_PAREN) {
         expr := expression()
-        
+        consume(.RIGHT_PAREN, "Expect '(' after expression.")
         return make_grouping(expr)
     }
-
+    
+    error(peek(), "Expected expression.")
     parser.had_error = true
     return nil
 }

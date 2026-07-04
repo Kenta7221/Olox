@@ -18,7 +18,9 @@ Scanner :: struct {
     line     : int
 }
 
-scanner_init :: proc(source: string) -> (scanner: Scanner) {
+scanner: Scanner
+
+scanner_init :: proc(source: string) {
     scanner.source, scanner.arena = load_file(source)
     scanner.tokens = make([dynamic]Token, 0, 16)
 
@@ -40,17 +42,15 @@ scanner_init :: proc(source: string) -> (scanner: Scanner) {
     scanner.keywords["var"]    = .VAR
     scanner.keywords["while"]  = .WHILE
     
-    scan_tokens(&scanner)
-    
     return
 }
 
-scanner_delete :: proc(scanner: ^Scanner) {
+scanner_delete :: proc() {
     delete(scanner.tokens)
     vmem.arena_destroy(&scanner.arena)
 }
 
-scan_tokens :: proc(scanner: ^Scanner) {
+scan_tokens :: proc() {
     for scanner.curr < len(scanner.source) {
         b := scanner.source[scanner.curr]
         scanner.curr += 1
@@ -113,16 +113,20 @@ scan_tokens :: proc(scanner: ^Scanner) {
             if is_digit(b) {
                 parse_digit(scanner)
                 break
+            } else if is_alpha(b) {
+                parse_identifier(scanner)
             }
             // TODO: Change to lox error
             fmt.eprintln("Unexpected character", scanner.line)
         }
         scanner.start = scanner.curr
     }
+
+    append_elem(&scanner.tokens, Token{ type = .EOF })
 }
 
 @(private="file")
-parse_digit :: proc(scanner: ^Scanner) {
+parse_digit :: proc() {
     for is_digit(peek(&scanner.source, scanner.curr)) do scanner.curr += 1
 
     if peek(&scanner.source, scanner.curr) == '.' && is_digit(peek_next(&scanner.source, scanner.curr)) {
@@ -147,7 +151,7 @@ parse_digit :: proc(scanner: ^Scanner) {
 }
 
 @(private="file")
-parse_string :: proc(scanner: ^Scanner) {
+parse_string :: proc() {
     for peek(&scanner.source, scanner.curr) != '"' && scanner.curr < len(scanner.source) {
         if peek(&scanner.source, scanner.curr) == '\n' do scanner.line += 1
         scanner.curr += 1
@@ -168,7 +172,7 @@ parse_string :: proc(scanner: ^Scanner) {
     scanner.curr += 1
 }
 
-parse_identifier :: proc(scanner: ^Scanner) {
+parse_identifier :: proc() {
     b := scanner.source[scanner.curr]
     for is_alpha_numeric(b) {
         scanner.curr += 1
@@ -182,7 +186,7 @@ parse_identifier :: proc(scanner: ^Scanner) {
     }
 
     type, ok := scanner.keywords[str]
-    if !ok do type = TokenTyp.IDENTIFIER
+    if !ok do type = .IDENTIFIER
 
     add_token(scanner, type)
 }
@@ -214,7 +218,7 @@ add_token :: proc {
 }
 
 @(private="file")
-add_token_noval :: proc(scanner: ^Scanner, type: TokenType) {
+add_token_noval :: proc(type: TokenType) {
     // TODO: Check if it is successfull
     lexeme, err := strings.substring(scanner.source, scanner.start, scanner.curr)
     if !err {
@@ -232,7 +236,7 @@ add_token_noval :: proc(scanner: ^Scanner, type: TokenType) {
 }
 
 @(private="file")
-add_token_val :: proc(scanner: ^Scanner, type: TokenType, literal: TokenLiteral) {
+add_token_val :: proc(type: TokenType, literal: TokenLiteral) {
     // TODO: Check if it is successfull
     lexeme, err := strings.substring(scanner.source, scanner.start, scanner.curr)
     if !err {
