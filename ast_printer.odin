@@ -4,14 +4,13 @@ import "core:fmt"
 import "core:strings"
 
 // 1. Root wrapper function
-ast_print :: proc(expr: ^Expr) -> string {
-    if expr == nil do return "nil"
-    
+ast_print :: proc(expr: ^Expr) -> (strings.Builder, string) {
     sb: strings.Builder
     strings.builder_init(&sb)
     
+    if expr == nil do return sb, "nil"
     ast_print_node(&sb, expr)
-    return strings.to_string(sb) // Caller must delete() this string later
+    return sb, strings.to_string(sb)
 }
 
 // 2. Recursive internal worker

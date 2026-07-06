@@ -21,7 +21,7 @@ Grouping :: struct {
 }
 
 Literal :: struct {
-    val: TokenLiteral
+    val: Value
 }
 
 Unary :: struct {
@@ -41,7 +41,7 @@ make_unary :: proc(operator: Token, right: ^Expr) -> ^Expr {
     return expr
 }
 
-make_literal :: proc(val: TokenLiteral) -> ^Expr {
+make_literal :: proc(val: Value) -> ^Expr {
     expr := new(Expr)
     expr^ = Literal{val}
     return expr
@@ -69,7 +69,6 @@ parser_init :: proc(tokens: [dynamic]Token) -> ^Expr {
 parser_delete :: proc() {
     delete(parser.tokens)
 }
-
 
 parse :: proc() -> ^Expr {
     exp := expression()
@@ -178,7 +177,6 @@ primary :: proc() -> ^Expr {
     parser.had_error = true
     return nil
 }
-
 
 error :: proc(token: Token, msg: string) {
     if parser.had_error do return

@@ -21,7 +21,7 @@ TokenType :: enum {
     EOF
 }
 
-TokenLiteral :: union {
+Value :: union {
     string,
     f64,
     bool
@@ -30,6 +30,6 @@ TokenLiteral :: union {
 Token :: struct {
     type:   TokenType,
     lexeme: string,
-    literal: TokenLiteral,
+    literal: Value,
     line :  int
 }

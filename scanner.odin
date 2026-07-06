@@ -23,7 +23,8 @@ scanner: Scanner
 scanner_init :: proc(source: string) {
     scanner.source, scanner.arena = load_file(source)
     scanner.tokens = make([dynamic]Token, 0, 16)
-
+    scanner.line = 1
+    
     scanner.keywords = make(map[string]TokenType, len(TokenType))
     scanner.keywords["and"]    = .AND
     scanner.keywords["class"]  = .CLASS
@@ -42,96 +43,137 @@ scanner_init :: proc(source: string) {
     scanner.keywords["var"]    = .VAR
     scanner.keywords["while"]  = .WHILE
     
+    scan_tokens()
+    
     return
 }
 
 scanner_delete :: proc() {
     delete(scanner.tokens)
+    delete(scanner.keywords)
     vmem.arena_destroy(&scanner.arena)
 }
 
+@(private="file")
 scan_tokens :: proc() {
-    for scanner.curr < len(scanner.source) {
-        b := scanner.source[scanner.curr]
-        scanner.curr += 1
-        
-        switch b {
-        // One character lexemes
-        case '(': add_token(scanner, .LEFT_PAREN)
-        case ')': add_token(scanner, .RIGHT_PAREN)
-        case '{': add_token(scanner, .LEFT_BRACE)
-        case '}': add_token(scanner, .RIGHT_BRACE)
-        case ',': add_token(scanner, .COMMA)
-        case '.': add_token(scanner, .DOT)
-        case '-': add_token(scanner, .MINUS)
-        case '+': add_token(scanner, .PLUS)
-        case ';': add_token(scanner, .SEMICOLON)
-        case '*': add_token(scanner, .STAR)
-        // Potentialy two character lexemes
-        case '!':
-            token := TokenType.BANG_EQUAL if match(&scanner.source, &scanner.curr, '=') else TokenType.BANG
-            add_token(scanner, token)
-        case '=':
-            token := TokenType.EQUAL_EQUAL if match(&scanner.source, &scanner.curr, '=') else TokenType.EQUAL
-            add_token(scanner, token)
-        case '<':
-            token := TokenType.LESS_EQUAL if match(&scanner.source, &scanner.curr, '=') else TokenType.LESS
-            add_token(scanner, token)
-        case '>':
-            token := TokenType.GREATER_EQUAL if match(&scanner.source, &scanner.curr, '=') else TokenType.GREATER
-            add_token(scanner, token)
-        case '/':
-            if match(&scanner.source, &scanner.curr, '/') {
-                for peek(&scanner.source, scanner.curr) != '\n' do scanner.curr += 1
-                break
-            }
-
-            if match(&scanner.source, &scanner.curr, '*') {
-                for peek(&scanner.source, scanner.curr) != '*' && peek_next(&scanner.source, scanner.curr) != '/' {
-                    scanner.curr += 1
-
-                    if peek(&scanner.source, scanner.curr) == '\n' do scanner.line += 1
-
-                    if scanner.curr >= len(scanner.source) {
-                        fmt.eprintln("Missing closing brackets for multi line comments")
-                        return
-                    }
-                }
-                break;
-            }
-            
-            add_token(scanner, .SLASH)
-        case '"':
-            parse_string(scanner)
-        case ' ':
-        case '\r':
-        case '\t':
-            break
-        case '\n':
-            scanner.line += 1
-        case:
-            if is_digit(b) {
-                parse_digit(scanner)
-                break
-            } else if is_alpha(b) {
-                parse_identifier(scanner)
-            }
-            // TODO: Change to lox error
-            fmt.eprintln("Unexpected character", scanner.line)
-        }
+    for !is_at_end() {
         scanner.start = scanner.curr
+        scan_token()
     }
 
     append_elem(&scanner.tokens, Token{ type = .EOF })
 }
 
 @(private="file")
-parse_digit :: proc() {
-    for is_digit(peek(&scanner.source, scanner.curr)) do scanner.curr += 1
+scan_token :: proc() {
+    b := advance()
 
-    if peek(&scanner.source, scanner.curr) == '.' && is_digit(peek_next(&scanner.source, scanner.curr)) {
-        scanner.curr += 1
-        for is_digit(peek(&scanner.source, scanner.curr)) do scanner.curr += 1
+    switch b {
+    // One character lexemes
+    case '(': add_token(.LEFT_PAREN)
+    case ')': add_token(.RIGHT_PAREN)
+    case '{': add_token(.LEFT_BRACE)
+    case '}': add_token(.RIGHT_BRACE)
+    case ',': add_token(.COMMA)
+    case '.': add_token(.DOT)
+    case '-': add_token(.MINUS)
+    case '+': add_token(.PLUS)
+    case ';': add_token(.SEMICOLON)
+    case '*': add_token(.STAR)
+    // Potentialy two character lexemes
+    case '!':
+        token := TokenType.BANG_EQUAL    if match('=') else TokenType.BANG
+        add_token(token)
+    case '=':
+        token := TokenType.EQUAL_EQUAL   if match('=') else TokenType.EQUAL
+        add_token(token)
+    case '<':
+        token := TokenType.LESS_EQUAL    if match('=') else TokenType.LESS
+        add_token(token)
+    case '>':
+        token := TokenType.GREATER_EQUAL if match('=') else TokenType.GREATER
+        add_token(token)
+    case '/':
+        if match('/') {
+            for peek() != '\n' do advance()
+            break
+        }
+
+        if match('*') {
+            for peek() != '*' && peek_next() != '/' {
+                advance()
+
+                if peek() == '\n' do scanner.line += 1
+
+                if scanner.curr >= len(scanner.source) {
+                    fmt.eprintln("Missing closing brackets for multi line comments")
+                    return
+                }
+            }
+            break;
+        }
+        
+        add_token(.SLASH)
+    case '"':
+        parse_string()
+    case ' ':
+    case '\r':
+    case '\t':
+        break
+    case '\n':
+        scanner.line += 1
+        case:
+        if is_digit(b) {
+            parse_digit()
+            break
+        } else if is_alpha(b) {
+            parse_identifier()
+            break
+        }
+        
+        fmt.eprintln("Unexpected character", scanner.line)
+    }
+}
+
+// Methods
+@(private="file")
+is_at_end :: proc() -> bool { return scanner.curr >= len(scanner.source) }
+
+@(private="file")
+advance :: proc() -> u8 {
+    scanner.curr += 1
+    return scanner.source[scanner.curr - 1]
+}
+
+@(private="file")
+match :: proc(expected: u8) -> bool {
+    if scanner.curr >= len(scanner.source) do return false
+    if scanner.source[scanner.curr] != expected do return false
+    
+    scanner.curr += 1
+    return true
+}
+
+@(private="file")
+peek :: proc() -> u8 {
+    if is_at_end() do return '\n'
+    return scanner.source[scanner.curr]
+}
+
+@(private="file")
+peek_next :: proc() -> u8 {
+    if scanner.curr + 1 >= len(scanner.source) do return '\n'
+    return scanner.source[scanner.curr + 1]
+}
+
+// Helpers
+@(private="file")
+parse_digit :: proc() {
+    for is_digit(peek()) do advance()
+
+    if peek() == '.' && is_digit(peek_next()) {
+        advance()
+        for is_digit(peek()) do advance()
     }
 
     str, str_err := strings.substring(scanner.source, scanner.start, scanner.curr)
@@ -140,21 +182,21 @@ parse_digit :: proc() {
         return
     }
     
-    literal: TokenLiteral
+    literal: Value
     lit_err: bool
     literal, lit_err = strconv.parse_f64(str)
     if !lit_err {
         fmt.eprintln("Could not parse the string into number literal")
     }
 
-    add_token(scanner, .NUMBER, literal)
+    add_token(.NUMBER, literal)
 }
 
 @(private="file")
 parse_string :: proc() {
-    for peek(&scanner.source, scanner.curr) != '"' && scanner.curr < len(scanner.source) {
-        if peek(&scanner.source, scanner.curr) == '\n' do scanner.line += 1
-        scanner.curr += 1
+    for peek() != '"' && !is_at_end() {
+        if peek() == '\n' do scanner.line += 1
+        advance()
     }
 
     if scanner.curr >= len(scanner.source) {
@@ -162,22 +204,21 @@ parse_string :: proc() {
         return
     }
 
+    // Skip the firt "
     scanner.start += 1
     
-    literal: TokenLiteral
+    literal: Value
     literal, _ = strings.substring(scanner.source, scanner.start, scanner.curr)
-    add_token(scanner, .STRING, literal)
+    add_token(.STRING, literal)
     
     // The closing "
-    scanner.curr += 1
+    advance()
 }
 
+@(private="file")
 parse_identifier :: proc() {
     b := scanner.source[scanner.curr]
-    for is_alpha_numeric(b) {
-        scanner.curr += 1
-        b = scanner.source[scanner.curr]
-    }
+    for is_alpha_numeric(peek()) do b = advance()
 
     str, err := strings.substring(scanner.source, scanner.start, scanner.curr)
     if !err {
@@ -188,28 +229,7 @@ parse_identifier :: proc() {
     type, ok := scanner.keywords[str]
     if !ok do type = .IDENTIFIER
 
-    add_token(scanner, type)
-}
-
-@(private="file")
-match :: proc(source: ^string, curr: ^int, expected: u8) -> bool {
-    if curr^ >= len(source) do return false
-    if source[curr^] != expected do return false
-    
-    curr^ += 1
-    return true
-}
-
-@(private="file")
-peek :: proc(source: ^string, curr: int) -> u8 {
-    if curr >= len(source) do return '\n'
-    return source[curr]
-}
-
-@(private="file")
-peek_next :: proc(source: ^string, curr: int) -> u8 {
-    if curr + 1 >= len(source) do return '\n'
-    return source[curr + 1]
+    add_token(type)
 }
 
 add_token :: proc {
@@ -219,7 +239,6 @@ add_token :: proc {
 
 @(private="file")
 add_token_noval :: proc(type: TokenType) {
-    // TODO: Check if it is successfull
     lexeme, err := strings.substring(scanner.source, scanner.start, scanner.curr)
     if !err {
         fmt.eprintln("Could not parse the lexeme")
@@ -236,8 +255,7 @@ add_token_noval :: proc(type: TokenType) {
 }
 
 @(private="file")
-add_token_val :: proc(type: TokenType, literal: TokenLiteral) {
-    // TODO: Check if it is successfull
+add_token_val :: proc(type: TokenType, literal: Value) {
     lexeme, err := strings.substring(scanner.source, scanner.start, scanner.curr)
     if !err {
         fmt.eprintln("Could not parse the lexeme")
@@ -254,6 +272,7 @@ add_token_val :: proc(type: TokenType, literal: TokenLiteral) {
     append_elem(&scanner.tokens, token)
 }
 
+// Helpers
 @(private="file")
 load_file :: proc(filepath: string) -> (string, vmem.Arena) {
     arena: vmem.Arena
@@ -265,16 +284,13 @@ load_file :: proc(filepath: string) -> (string, vmem.Arena) {
     }
     arena_alloc := vmem.arena_allocator(&arena)
 
-    file, err := os.read_entire_file(filepath, context.allocator)
+    file, err := os.read_entire_file(filepath, arena_alloc)
     if err != os.ERROR_NONE {
         fmt.eprintln("Could not open the file", filepath)
         os.exit(1)
     }
-
     
-    buf := string(file)
-
-    return buf, arena
+    return string(file), arena
 }
 
 @(private="file")
