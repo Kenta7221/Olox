@@ -7,11 +7,11 @@ import "core:strings"
 // Cool things to add:
 // Better error handling
 // Adding more operations (modulo, bit manipulation)
+// Change parser structure so it doesn't copy lexers tokens
 
 // Changes:
 // Add to default case switch in scanner lox error message
 // Change somewhere the bool for checking an errors
-// Clean the messy ass code you stinky bitch
 
 main :: proc() {
     // if len(os.args) > 1 {
@@ -37,7 +37,6 @@ main :: proc() {
 		}
 	}
 
-
     // Step 1: Scan the tokens:
     scanner_init("test.txt")
     defer scanner_delete()
@@ -45,13 +44,22 @@ main :: proc() {
     for token in scanner.tokens {
         fmt.println(token)
     }
+    fmt.println("")
 
     // Step 2: Parse the tokens into an ast tree
-    expr := parser_init(scanner.tokens)
+    stmts := parser_init(scanner.tokens)
     defer parser_delete()
 
-    sb, str := ast_print(expr)
-    defer strings.builder_destroy(&sb)
+    // Step 3: Interpret
+    interpret(stmts)
     
-    fmt.println(str)
+    // Checking if it works
+    // expr := parse_eval()
+    // sb, str := ast_print(expr)
+    // defer strings.builder_destroy(&sb)
+    // fmt.println(str)
+    
+    // Step 3: Evaluate
+    // val := evaluate(expr)
+    // fmt.println(val)
 }

@@ -3,53 +3,83 @@ package olox
 import "core:fmt"
 import "core:slice"
 
-Expr :: union {
-    Binary,
-    Grouping,
-    Literal,
-    Unary
+Stmt :: union {
+    Stmt_Expr,
+    Stmt_Print,
+    Stmt_Var,
 }
 
-Binary :: struct {
+Stmt_Expr :: struct {
+    expr: ^Expr
+}
+
+Stmt_Print :: struct {
+    expr: ^Expr
+}
+
+Stmt_Var :: struct {
+    name: Token,
+    initializer: ^Expr
+}
+
+Expr :: union {
+    Expr_Binary,
+    Expr_Grouping,
+    Expr_Literal,
+    Expr_Unary,
+    Expr_Var,
+}
+
+Expr_Binary :: struct {
     left: ^Expr,
     op: Token,
     right: ^Expr
 }
 
-Grouping :: struct {
+Expr_Grouping :: struct {
     expr: ^Expr
 }
 
-Literal :: struct {
+Expr_Literal :: struct {
     val: Value
 }
 
-Unary :: struct {
+Expr_Unary :: struct {
     op: Token,
     right: ^Expr
 }
 
+Expr_Var :: struct {
+    name: Token
+}
+
 make_binary :: proc(left: ^Expr, operator: Token, right: ^Expr) -> ^Expr {
     expr := new(Expr)
-    expr^ = Binary{left, operator, right}
+    expr^ = Expr_Binary{left, operator, right}
     return expr
 }
 
 make_unary :: proc(operator: Token, right: ^Expr) -> ^Expr { 
     expr := new(Expr)
-    expr^ = Unary{operator, right}
+    expr^ = Expr_Unary{operator, right}
     return expr
 }
 
 make_literal :: proc(val: Value) -> ^Expr {
     expr := new(Expr)
-    expr^ = Literal{val}
+    expr^ = Expr_Literal{val}
     return expr
 }
 
 make_grouping :: proc(left: ^Expr) -> ^Expr {
     expr := new(Expr)
-    expr^ = Grouping{left}
+    expr^ = Expr_Grouping{left}
+    return expr
+}
+
+make_var :: proc(name: Token) -> ^Expr {
+    expr := new(Expr)
+    expr^ = Expr_Var{name}
     return expr
 }
 
@@ -61,7 +91,7 @@ Parser :: struct {
 
 parser: Parser
 
-parser_init :: proc(tokens: [dynamic]Token) -> ^Expr {
+parser_init :: proc(tokens: [dynamic]Token) -> [dynamic]^Stmt {
     parser.tokens = slice.clone_to_dynamic(tokens[:])
     return parse()
 }
@@ -70,7 +100,61 @@ parser_delete :: proc() {
     delete(parser.tokens)
 }
 
-parse :: proc() -> ^Expr {
+parse :: proc() ->  [dynamic]^Stmt {
+    stmts := make([dynamic]^Stmt, 0, 16)
+    
+    for !is_at_end() do append_elem(&stmts, declaration())
+
+    return stmts
+}
+
+declaration :: proc() -> ^Stmt {
+    stmt: ^Stmt
+    stmt = var_declaration() if match(.VAR) else statement()
+
+    if parser.had_error {
+        sychronize()
+        return nil
+    }
+
+    return stmt
+}
+
+var_declaration :: proc() -> ^Stmt {
+    name := consume(.IDENTIFIER, "Expectet variable name.")
+
+    initializer: ^Expr
+    if match(.EQUAL) do expression()
+
+    consume(.SEMICOLON, "Expect ';' after variable declaration.")
+    
+    stmt := new(Stmt)
+    stmt^ = Stmt_Var{name, initializer}
+    return stmt
+}
+
+statement :: proc() -> ^Stmt {
+    if match(.PRINT) do return print_stmt()
+    return expr_stmt()
+}
+
+expr_stmt :: proc() -> ^Stmt {
+    exp := expression()
+    consume(.SEMICOLON, "Expect ';' after value.")
+    stmt := new(Stmt)
+    stmt^ = Stmt_Expr{exp}
+    return stmt
+}
+
+print_stmt :: proc() -> ^Stmt {
+    exp := expression()
+    consume(.SEMICOLON, "Expect ';' after value.")
+    stmt := new(Stmt)
+    stmt^ = Stmt_Print{exp}
+    return stmt
+}
+
+parse_eval :: proc() -> ^Expr {
     exp := expression()
     if parser.had_error do return nil
     return exp
@@ -166,6 +250,7 @@ primary :: proc() -> ^Expr {
     if match(.TRUE)            do return make_literal(true)
     if match(.NIL)             do return make_literal(nil)
     if match(.NUMBER, .STRING) do return make_literal(previous().literal)
+    if match(.IDENTIFIER)      do return make_var(previous())
 
     if match(.LEFT_PAREN) {
         expr := expression()

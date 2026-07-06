@@ -4,28 +4,50 @@ import "core:fmt"
 import "core:strings"
 
 Interpreter :: struct {
+    environment: Environment,
     had_runtime_error: bool
 }
 
-
 interp: Interpreter
 
-evaluate :: proc(expr: ^Expr) -> Value {
-    switch e in expr^ {       
-    case Binary:
-        return evaluate_binary(e)
-    case Grouping:
-        return evaluate(e.expr)
-    case Unary:
-        return evaluate_unary(e)
-    case Literal:
-        return e.val
-    }
-
-    return {}
+interpret :: proc(stmts: [dynamic]^Stmt) {
+    interp.environment.values = make(map[string]Value)
+    
+    for stmt in stmts do excecute(stmt)
 }
 
-evaluate_unary :: proc(expr: Unary) -> Value {
+excecute :: proc(stmt: ^Stmt) {
+    switch s in stmt^ {
+        case Stmt_Expr:
+        evaluate(s.expr)
+        case Stmt_Print:
+        val := evaluate(s.expr)
+        fmt.println(stringify(val))
+        case Stmt_Var:
+        val: Value = nil
+        if s.initializer != nil do val = evaluate(s.initializer)
+        environment_define(&interp.environment, s.name.lexeme, val)
+    }
+}
+
+evaluate :: proc(expr: ^Expr) -> Value {
+    switch e in expr^ {
+    case Expr_Binary:
+        return evaluate_binary(e)
+    case Expr_Grouping:
+        return evaluate(e.expr)
+    case Expr_Unary:
+        return evaluate_unary(e)
+    case Expr_Literal:
+        return e.val
+    case Expr_Var:
+        return environment_get(&interp.environment, e.name)
+    }
+
+    return nil
+}
+
+evaluate_unary :: proc(expr: Expr_Unary) -> Value {
     right := evaluate(expr.right)
 
     #partial switch expr.op.type {
@@ -38,7 +60,7 @@ evaluate_unary :: proc(expr: Unary) -> Value {
     return nil
 }
 
-evaluate_binary :: proc(expr: Binary) -> Value {
+evaluate_binary :: proc(expr: Expr_Binary) -> Value {
     left := evaluate(expr.left)
     right := evaluate(expr.right)
     
@@ -59,7 +81,7 @@ evaluate_binary :: proc(expr: Binary) -> Value {
         l := check_number_operand(expr.op, left)
         r := check_number_operand(expr.op, right)
         return l <= r
-        case .EQUAL:
+        case .EQUAL_EQUAL:
         return is_equal(left, right)
         case .BANG_EQUAL:
         return !is_equal(left, right)
@@ -75,17 +97,16 @@ evaluate_binary :: proc(expr: Binary) -> Value {
         l := check_number_operand(expr.op, left)
         r := check_number_operand(expr.op, right)
         return l * r
-        case .PLUS:
-        if type_of(left) == f64 && type_of(right) == f64 {
-            l := left.(f64)
-            r := left.(f64)
-            return l + r
+        case .PLUS:        
+        if l, lok := left.(f64); lok {
+            if r, rok := right.(f64); rok {
+                return l + r
+            }
         }
-
-        if type_of(left) == string && type_of(right) == string {
-            l := left.(string)
-            r := left.(string)
-            return strings.concatenate({l, r})
+        if l, lok := left.(string); lok {
+            if r, rok := right.(string); rok {
+                return strings.concatenate({l, r})
+            }
         }
     }
 

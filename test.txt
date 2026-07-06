@@ -1,1 +1,3 @@
--123 * (45.67 + 89) == "hello" != nil
+var a = 1;
+var b = 2;
+print a + b;
