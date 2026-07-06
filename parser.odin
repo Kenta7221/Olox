@@ -3,86 +3,6 @@ package olox
 import "core:fmt"
 import "core:slice"
 
-Stmt :: union {
-    Stmt_Expr,
-    Stmt_Print,
-    Stmt_Var,
-}
-
-Stmt_Expr :: struct {
-    expr: ^Expr
-}
-
-Stmt_Print :: struct {
-    expr: ^Expr
-}
-
-Stmt_Var :: struct {
-    name: Token,
-    initializer: ^Expr
-}
-
-Expr :: union {
-    Expr_Binary,
-    Expr_Grouping,
-    Expr_Literal,
-    Expr_Unary,
-    Expr_Var,
-}
-
-Expr_Binary :: struct {
-    left: ^Expr,
-    op: Token,
-    right: ^Expr
-}
-
-Expr_Grouping :: struct {
-    expr: ^Expr
-}
-
-Expr_Literal :: struct {
-    val: Value
-}
-
-Expr_Unary :: struct {
-    op: Token,
-    right: ^Expr
-}
-
-Expr_Var :: struct {
-    name: Token
-}
-
-make_binary :: proc(left: ^Expr, operator: Token, right: ^Expr) -> ^Expr {
-    expr := new(Expr)
-    expr^ = Expr_Binary{left, operator, right}
-    return expr
-}
-
-make_unary :: proc(operator: Token, right: ^Expr) -> ^Expr { 
-    expr := new(Expr)
-    expr^ = Expr_Unary{operator, right}
-    return expr
-}
-
-make_literal :: proc(val: Value) -> ^Expr {
-    expr := new(Expr)
-    expr^ = Expr_Literal{val}
-    return expr
-}
-
-make_grouping :: proc(left: ^Expr) -> ^Expr {
-    expr := new(Expr)
-    expr^ = Expr_Grouping{left}
-    return expr
-}
-
-make_var :: proc(name: Token) -> ^Expr {
-    expr := new(Expr)
-    expr^ = Expr_Var{name}
-    return expr
-}
-
 Parser :: struct {
     tokens: [dynamic]Token,
     curr: int,
@@ -108,6 +28,59 @@ parse :: proc() ->  [dynamic]^Stmt {
     return stmts
 }
 
+sychronize :: proc() {
+    advance()
+
+    for !is_at_end() {
+        if previous().type == .SEMICOLON do return
+
+        #partial switch peek().type {
+        case .CLASS:
+        case .FUN:
+        case .VAR:
+        case .FOR:
+        case .IF:
+        case .WHILE:
+        case .PRINT:
+        case .RETURN:
+            return
+        }
+    }
+}
+
+error :: proc(token: Token, msg: string) {
+    if parser.had_error do return
+    fmt.eprintf("[line %d]", token.line)
+
+    if token.type == .EOF {
+        fmt.eprintf(" at end")
+    } else {
+        fmt.eprintf("%d at %s, %s", token.line, token.lexeme, msg)
+    }
+
+    fmt.eprintf(": %s\n", msg)
+    parser.had_error = true
+}
+
+Stmt :: union {
+    Stmt_Expr,
+    Stmt_Print,
+    Stmt_Var,
+}
+
+Stmt_Expr :: struct {
+    expr: ^Expr
+}
+
+Stmt_Print :: struct {
+    expr: ^Expr
+}
+
+Stmt_Var :: struct {
+    name: Token,
+    initializer: ^Expr
+}
+
 declaration :: proc() -> ^Stmt {
     stmt: ^Stmt
     stmt = var_declaration() if match(.VAR) else statement()
@@ -124,7 +97,7 @@ var_declaration :: proc() -> ^Stmt {
     name := consume(.IDENTIFIER, "Expectet variable name.")
 
     initializer: ^Expr
-    if match(.EQUAL) do expression()
+    if match(.EQUAL) do initializer = expression()
 
     consume(.SEMICOLON, "Expect ';' after variable declaration.")
     
@@ -154,35 +127,106 @@ print_stmt :: proc() -> ^Stmt {
     return stmt
 }
 
+Expr :: union {
+    Expr_Binary,
+    Expr_Grouping,
+    Expr_Literal,
+    Expr_Unary,
+    Expr_Var,
+    Expr_Ass,
+}
+
+Expr_Binary :: struct {
+    left: ^Expr,
+    op: Token,
+    right: ^Expr
+}
+
+make_binary :: proc(left: ^Expr, operator: Token, right: ^Expr) -> ^Expr {
+    expr := new(Expr)
+    expr^ = Expr_Binary{left, operator, right}
+    return expr
+}
+
+Expr_Grouping :: struct {
+    expr: ^Expr
+}
+
+make_grouping :: proc(left: ^Expr) -> ^Expr {
+    expr := new(Expr)
+    expr^ = Expr_Grouping{left}
+    return expr
+}
+
+Expr_Literal :: struct {
+    val: Value
+}
+
+make_literal :: proc(val: Value) -> ^Expr {
+    expr := new(Expr)
+    expr^ = Expr_Literal{val}
+    return expr
+}
+
+Expr_Unary :: struct {
+    op: Token,
+    right: ^Expr
+}
+
+make_unary :: proc(operator: Token, right: ^Expr) -> ^Expr { 
+    expr := new(Expr)
+    expr^ = Expr_Unary{operator, right}
+    return expr
+}
+
+Expr_Var :: struct {
+    name: Token
+}
+
+make_var :: proc(name: Token) -> ^Expr {
+    expr := new(Expr)
+    expr^ = Expr_Var{name}
+    return expr
+}
+
+Expr_Ass :: struct {
+    name: Token,
+    expr: ^Expr
+}
+
+make_ass :: proc(name: Token, right: ^Expr) -> ^Expr {
+    expr := new(Expr)
+    expr^ = Expr_Ass{name, right}
+    return expr
+}
+
 parse_eval :: proc() -> ^Expr {
     exp := expression()
     if parser.had_error do return nil
     return exp
 }
 
-sychronize :: proc() {
-    advance()
-
-    for !is_at_end() {
-        if previous().type == .SEMICOLON do return
-
-        #partial switch peek().type {
-        case .CLASS:
-        case .FUN:
-        case .VAR:
-        case .FOR:
-        case .IF:
-        case .WHILE:
-        case .PRINT:
-        case .RETURN:
-            return
-        }
-    }
-}
-
 @(private="file")
 expression :: proc() -> ^Expr {
-    return equality()
+    return assignment()
+}
+
+assignment :: proc()  -> ^Expr {
+    expr := equality()
+
+    if match(.EQUAL) {
+        equals := previous()
+        value := assignment()
+
+        if e, ok := expr.(Expr_Var); ok {
+            name := e.name
+            return make_ass(name, value)
+        }
+
+        error(equals, "Ivalid assignment.")
+    }
+    
+    return expr
 }
 
 @(private="file")
@@ -261,20 +305,6 @@ primary :: proc() -> ^Expr {
     error(peek(), "Expected expression.")
     parser.had_error = true
     return nil
-}
-
-error :: proc(token: Token, msg: string) {
-    if parser.had_error do return
-    fmt.eprintf("[line %d]", token.line)
-
-    if token.type == .EOF {
-        fmt.eprintf(" at end")
-    } else {
-        fmt.eprintf("%d at %s, %s", token.line, token.lexeme, msg)
-    }
-
-    fmt.eprintf(": %s\n", msg)
-    parser.had_error = true
 }
 
 // Helpers

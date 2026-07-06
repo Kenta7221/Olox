@@ -42,6 +42,10 @@ evaluate :: proc(expr: ^Expr) -> Value {
         return e.val
     case Expr_Var:
         return environment_get(&interp.environment, e.name)
+    case Expr_Ass:
+        value := evaluate(e.expr)
+        environment_set(&interp.environment, e.name, value)
+        return value
     }
 
     return nil
