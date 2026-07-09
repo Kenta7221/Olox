@@ -31,10 +31,10 @@ lox_run :: proc(l: ^Lox) {
     // Step 1: Scan tokens
     scan_tokens(&l.scanner)
 
-    for token in l.scanner.tokens {
-        fmt.println(token)
-    }
-    fmt.println()
+    // for token in l.scanner.tokens {
+    //     fmt.println(token)
+    // }
+    // fmt.println()
     
     // Step 2: Parse the tokens into an ast tree
     l.parser = parser_init(l.scanner.tokens)

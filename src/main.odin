@@ -2,15 +2,16 @@ package olox
 
 import "core:fmt"
 import "core:mem"
-import "core:strings"
 
 // Things to change:
 // Better error handling. I have no idea when error occurs in which part
 // Change parser structure so it doesn't copy lexers tokens
+// Clean of memory leaks for the love of god please please please
 // Adding more operations (modulo, bit manipulation)
 // Change enviroment setting and finding from recursive to iterative
+// Change if statement to not use parantheses but require a block statement
 
-main :: proc() {    
+main :: proc() {
     when ODIN_DEBUG {
 		track: mem.Tracking_Allocator
 		mem.tracking_allocator_init(&track, context.allocator)

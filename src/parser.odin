@@ -1,3 +1,4 @@
+#+ feature dynamic-literals
 package olox
 
 import "core:fmt"
@@ -64,7 +65,9 @@ Stmt :: union {
     Stmt_Expr,
     Stmt_Print,
     Stmt_Var,
-    Stmt_Block
+    Stmt_Block,
+    Stmt_If,
+    Stmt_While,
 }
 
 Stmt_Expr :: struct {
@@ -84,7 +87,24 @@ Stmt_Block :: struct {
     stmts: [dynamic]^Stmt
 }
 
-// Seperated from others because it's used for blocks and procedures
+Stmt_If :: struct {
+    cond: ^Expr,
+    then_branch: ^Stmt,
+    else_branch: ^Stmt,
+}
+
+Stmt_While :: struct {
+    cond: ^Expr,
+    body: ^Stmt
+}
+
+init_while_stmt :: proc(cond: ^Expr, body: ^Stmt) -> ^Stmt {
+    stmt := new(Stmt)
+    stmt^ = Stmt_While{cond, body}
+    return stmt
+}
+
+// Seperated from others because it's used for blocks and functions
 make_block_stmt :: proc(p: ^Parser) -> [dynamic]^Stmt {
     stmts := make([dynamic]^Stmt)
     
@@ -108,6 +128,15 @@ declaration :: proc(p: ^Parser) -> ^Stmt {
     return stmt
 }
 
+statement :: proc(p: ^Parser) -> ^Stmt {
+    if match(p, .WHILE) do return while_stmt(p)
+    if match(p, .FOR) do return for_stmt(p)
+    if match(p, .IF) do return if_stmt(p)
+    if match(p, .LEFT_BRACE) do return block_stmt(p)
+    if match(p, .PRINT) do return print_stmt(p)
+    return expr_stmt(p)
+}
+
 var_declaration :: proc(p: ^Parser) -> ^Stmt {
     name := consume(p, .IDENTIFIER, "Expectet variable name.")
 
@@ -119,12 +148,6 @@ var_declaration :: proc(p: ^Parser) -> ^Stmt {
     stmt := new(Stmt)
     stmt^ = Stmt_Var{name, initializer}
     return stmt
-}
-
-statement :: proc(p: ^Parser) -> ^Stmt {
-    if match(p, .PRINT) do return print_stmt(p)
-    if match(p, .LEFT_BRACE) do return block_stmt(p)
-    return expr_stmt(p)
 }
 
 expr_stmt :: proc(p: ^Parser) -> ^Stmt {
@@ -149,8 +172,85 @@ block_stmt :: proc(p: ^Parser) -> ^Stmt {
     return block
 }
 
+if_stmt :: proc(p: ^Parser) -> ^Stmt {
+    consume(p, .LEFT_PAREN, "Expect '(' after 'if'.")
+    cond := expression(p)
+    consume(p, .RIGHT_PAREN, "Expect ')' after 'if' condition.")
+
+    then_branch := statement(p)
+    else_branch := statement(p) if match(p, .ELSE) else nil
+
+    stmt := new(Stmt)
+    stmt^ = Stmt_If{cond, then_branch, else_branch}
+    
+    return stmt
+}
+
+while_stmt :: proc(p: ^Parser) -> ^Stmt {
+    consume(p, .LEFT_PAREN, "Expect '(' after 'if'.")
+    cond := expression(p)
+    consume(p, .RIGHT_PAREN, "Expect ')' after 'if' condition.")
+
+    body := statement(p)
+
+    stmt := new(Stmt)
+    stmt^ = Stmt_While{cond, body}
+    return stmt
+}
+
+for_stmt :: proc(p: ^Parser) -> ^Stmt {
+    consume(p, .LEFT_PAREN, "Expect '(' after 'if'.")
+    
+    initializer: ^Stmt = nil
+    if match(p, .SEMICOLON) {
+        initializer = nil
+    } else if match(p, .VAR) {
+        initializer = var_declaration(p)
+    } else {
+        initializer = expr_stmt(p)
+    }
+
+    cond: ^Expr = nil
+    if !check(p, .SEMICOLON) {
+        cond = expression(p)
+    }
+    consume(p, .SEMICOLON, "Expect ';' after loop condition.")
+    
+    increment: ^Expr = nil
+    if !check(p, .RIGHT_PAREN) {
+        increment = expression(p)
+    }
+    consume(p, .RIGHT_PAREN, "Expect ';' after for clauses.")
+
+    body := statement(p)
+    if increment != nil {
+        expr_stmt := new(Stmt)
+        expr_stmt^ = Stmt_Expr{increment}
+         
+        new_body := new(Stmt)
+        new_body^ = Stmt_Block{[dynamic]^Stmt{body, expr_stmt}}
+        body = new_body
+    }
+    
+    if cond == nil {
+        cond = make_literal(true)
+    }
+    new_body := new(Stmt)
+    new_body^ = Stmt_While{cond, body}
+    body = new_body
+
+    if initializer != nil {
+        new_body := new(Stmt)
+        new_body^ = Stmt_Block{[dynamic]^Stmt{initializer, body}}
+        body = new_body
+    }
+
+    return body
+}
+
 Expr :: union {
     Expr_Binary,
+    Expr_Logical,
     Expr_Grouping,
     Expr_Literal,
     Expr_Unary,
@@ -167,6 +267,18 @@ Expr_Binary :: struct {
 make_binary :: proc(left: ^Expr, operator: Token, right: ^Expr) -> ^Expr {
     expr := new(Expr)
     expr^ = Expr_Binary{left, operator, right}
+    return expr
+}
+
+Expr_Logical :: struct {
+    left: ^Expr,
+    op: Token,
+    right: ^Expr
+}
+
+make_logical :: proc(left: ^Expr, operator: Token, right: ^Expr) -> ^Expr {
+    expr := new(Expr)
+    expr^ = Expr_Logical{left, operator, right}
     return expr
 }
 
@@ -240,6 +352,30 @@ assignment :: proc(p: ^Parser)  -> ^Expr {
         }
 
         error(p, equals, "Ivalid assignment.")
+    }
+    
+    return expr
+}
+
+or :: proc(p: ^Parser) -> ^Expr {
+    expr := and(p)
+
+    for match(p, .OR) {
+        op := previous(p)
+        right := and(p)
+        expr = make_logical(expr, op, right)
+    }
+    
+    return expr
+}
+
+and :: proc(p: ^Parser) -> ^Expr {
+    expr := equality(p)
+
+    for match(p, .OR) {
+        op := previous(p)
+        right := equality(p)
+        expr = make_logical(expr, op, right)
     }
     
     return expr

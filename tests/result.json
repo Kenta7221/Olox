@@ -1,0 +1,9 @@
+{
+    "assignment": [
+        {
+            "assiociativity.lox": ["c", "c", "c"],
+            "global.lox": ["before", "after", "arg"],
+            "syntax.lox": ["var", "var"]
+        }
+    ]
+}

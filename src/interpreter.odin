@@ -5,15 +5,18 @@ import "core:strings"
 
 Interpreter :: struct {
     environment: ^Environment,
-    had_runtime_error: bool
+    had_runtime_error: bool,
+    prints: [dynamic]string // TEMP
 }
 
 interpreter_init :: proc() -> (i: Interpreter) {
     i.environment = environment_init()
+    i.prints = make([dynamic]string) // TEMP
     return
 }
 
 interpreter_delete :: proc(i: ^Interpreter) {
+    delete(i.prints) // TEMP
     delete(i.environment.values)
 }
 
@@ -27,13 +30,25 @@ execute :: proc(i: ^Interpreter, stmt: ^Stmt) {
         evaluate(i, s.expr)
     case Stmt_Print:
         val := evaluate(i, s.expr)
-        fmt.println(stringify(val))
+        when ODIN_DEBUG { // TEMP
+            append_elem(&i.prints, stringify(val))
+        } else {
+            fmt.println(stringify(val))
+        }        
     case Stmt_Var:
         val: Value = nil
         if s.initializer != nil do val = evaluate(i, s.initializer)
         environment_define(i.environment, s.name.lexeme, val)
     case Stmt_Block:
         execute_block(i, s.stmts, environment_init(i.environment))
+    case Stmt_If:
+        if is_truthy(evaluate(i, s.cond)) {
+            execute(i, s.then_branch)
+        } else if s.else_branch != nil {
+            execute(i, s.else_branch)
+        }
+    case Stmt_While:
+        for is_truthy(evaluate(i, s.cond)) do execute(i, s.body)
     }
 }
 
@@ -63,6 +78,8 @@ evaluate :: proc(i: ^Interpreter, expr: ^Expr) -> Value {
         value := evaluate(i, e.expr)
         environment_set(i, i.environment, e.name, value)
         return value
+    case Expr_Logical:
+        return evaluate_logical(i, e)
     }
 
     return nil
@@ -134,6 +151,18 @@ evaluate_binary :: proc(i: ^Interpreter, expr: Expr_Binary) -> Value {
     runtime_error(i, expr.op, "Operands must be two numbers or two strings")
 
     return nil
+}
+
+evaluate_logical :: proc(i: ^Interpreter, expr: Expr_Logical) -> Value {
+    left := evaluate(i, expr.left)
+
+    if expr.op.type == .OR {
+        if is_truthy(left) do return left
+    } else {
+        if !is_truthy(left) do return left
+    }
+
+    return evaluate(i, expr.right)
 }
 
 runtime_error :: proc(i: ^Interpreter, token: Token, msg: string) {

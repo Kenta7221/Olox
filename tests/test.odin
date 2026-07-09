@@ -2,10 +2,9 @@ package tests
 
 import "core:testing"
 import "core:log"
-import "core:fmt"
 import "core:strings"
 import "core:os"
-//import lox "../src"
+import lox "../src"
 
 @(test)
 assgignment :: proc(t: ^testing.T) {
@@ -18,7 +17,10 @@ assgignment :: proc(t: ^testing.T) {
 			continue
 		}
 
-		//log.info("%#v\n", info.fullpath)
+        l := lox.lox_init(info.fullpath)
+        defer lox.lox_delete(&l)
+
+        lox.lox_run(&l)
 	}
 
 	if path, err := os.walker_error(&w); err != nil {
