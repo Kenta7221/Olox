@@ -4,7 +4,6 @@ import "core:fmt"
 import "core:mem"
 
 // Things to change:
-// Better error handling. I have no idea when error occurs in which part
 // Change parser structure so it doesn't copy lexers tokens
 // Clean of memory leaks for the love of god please please please
 // Change enviroment setting and finding from recursive to iterative
@@ -12,6 +11,7 @@ import "core:mem"
 // Changes for my own interpreter:
 // Change if statement and loops to not use parantheses but require a block statement
 // Adding more operations (modulo, bit manipulation)
+// Add breaks and continue keyword
 
 main :: proc() {
     when ODIN_DEBUG {

@@ -2,11 +2,8 @@
 package olox
 
 import "core:fmt"
-import "core:os"
 import "core:strings"
 import "core:strconv"
-
-import vmem "core:mem/virtual"
 
 Scanner :: struct {
     tokens   : [dynamic]Token,

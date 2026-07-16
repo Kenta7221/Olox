@@ -234,7 +234,7 @@ evaluate_logical :: proc(i: ^Interpreter, expr: Expr_Logical) -> Value {
 }
 
 runtime_error :: proc(i: ^Interpreter, token: Token, msg: string) {
-    fmt.eprintln(msg, "\n[line", token.line, "]")
+    fmt.eprintln("Interpreter error: [line", token.line, "]", msg)
     i.had_runtime_error = true
 }
 

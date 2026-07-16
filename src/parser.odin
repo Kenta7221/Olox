@@ -86,40 +86,53 @@ free_stmt :: proc(stmt: ^Stmt) {
 }
 
 parse :: proc(p: ^Parser) {
-    for !is_at_end(p) do append_elem(&p.all_stmts, declaration(p))
+    for !is_at_end(p) {
+        before := p.had_error
+        stmt := declaration(p)
+
+        if p.had_error && !before {
+            synchronize(p)
+            p.had_error = false
+        } else {
+            append(&p.all_stmts, stmt)
+        }
+    }
 }
 
-sychronize :: proc(p: ^Parser) {
-    advance(p)
+declaration :: proc(p: ^Parser) -> ^Stmt {
+    stmt: ^Stmt
+    if match(p, .VAR) {
+        stmt = var_declaration(p)
+    } else if match(p, .FUN) {
+        stmt = func_declaration(p, "function")
+    } else {
+        stmt = statement(p)
+    }
 
+    return stmt
+}
+
+synchronize :: proc(p: ^Parser) {
+    advance(p)
     for !is_at_end(p) {
         if previous(p).type == .SEMICOLON do return
-
         #partial switch peek(p).type {
-        case .CLASS:
-        case .FUN:
-        case .VAR:
-        case .FOR:
-        case .IF:
-        case .WHILE:
-        case .PRINT:
-        case .RETURN:
+        case .CLASS, .FUN, .VAR, .FOR, .IF, .WHILE, .PRINT, .RETURN:
             return
         }
+        advance(p)
     }
 }
 
 error :: proc(p: ^Parser, token: Token, msg: string) {
     if p.had_error do return
-    fmt.eprintf("[line %d]", token.line)
+    fmt.eprintf("Parser error: [line %d]", token.line)
 
     if token.type == .EOF {
-        fmt.eprintf(" at end")
+        fmt.eprintfln(" at end")
     } else {
-        fmt.eprintf("%d at %s, %s", token.line, token.lexeme, msg)
+        fmt.eprintfln(" at %s, %s",  token.lexeme, msg)
     }
-
-    fmt.eprintf(": %s\n", msg)
     p.had_error = true
 }
 

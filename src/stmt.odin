@@ -65,24 +65,6 @@ make_block_stmt :: proc(p: ^Parser) -> [dynamic]^Stmt {
     return stmts
 }
 
-declaration :: proc(p: ^Parser) -> ^Stmt {
-    stmt: ^Stmt
-    if match(p, .VAR) {
-        stmt = var_declaration(p)
-    } else if match(p, .FUN) {
-        stmt = func_declaration(p, "function")
-    } else {
-        stmt = statement(p)
-    }
-
-    if p.had_error {
-        sychronize(p)
-        return nil
-    }
-
-    return stmt
-}
-
 statement :: proc(p: ^Parser) -> ^Stmt {
     if match(p, .WHILE) do return while_stmt(p)
     if match(p, .FOR) do return for_stmt(p)
@@ -109,18 +91,19 @@ var_declaration :: proc(p: ^Parser) -> ^Stmt {
 func_declaration :: proc(p: ^Parser, kind: string) -> ^Stmt {
     name := consume(p, .IDENTIFIER, fmt.tprintln("Expect", kind, "name."))
     consume(p, .LEFT_PAREN, fmt.tprintln("Expect '(' after", kind, "name."))
-
+    
     params := make([dynamic]Token)
-    has_comma := true
-    for has_comma {
-        if len(params) >= 255 {
-            error(p, peek(p), "Can't have more than 255 arguments.")
+    if !check(p, .RIGHT_PAREN) {
+        has_comma := true
+        for has_comma {
+            if len(params) >= 255 {
+                error(p, peek(p), "Can't have more than 255 arguments.")
+            }
+
+            append_elem(&params, consume(p, .IDENTIFIER, "Expect parameter name."))
+            has_comma = match(p, .COMMA)
         }
-
-        append_elem(&params, consume(p, .IDENTIFIER, "Expect parameter name."))
-        has_comma = match(p, .COMMA)
     }
-
     consume(p, .RIGHT_PAREN, "Expect ')' after parameters.")
     consume(p, .LEFT_BRACE, fmt.tprintln("Expect '{' after", kind, "body."))
     body := make_block_stmt(p)
