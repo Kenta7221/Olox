@@ -17,10 +17,13 @@ Scanner :: struct {
     line     : int
 }
 
+had_error: bool
+
 scanner_init :: proc(source: string) -> (s: Scanner) {
     s.source = source
     s.tokens = make([dynamic]Token, 0, 16)
     s.line = 1
+    had_error = false
     
     s.keywords = make(map[string]TokenType, len(TokenType))
     s.keywords["and"]    = .AND
@@ -48,13 +51,16 @@ scanner_delete :: proc(s: ^Scanner) {
     delete(s.keywords)
 }
 
-scan_tokens :: proc(s: ^Scanner) {
+scan_tokens :: proc(s: ^Scanner) -> (ok: bool) {
     for !is_at_end(s) {
         s.start = s.curr
         scan_token(s)
+
+        if had_error do return true
     }
 
     append_elem(&s.tokens, Token{ type = .EOF })
+    return false
 }
 
 @(private="file")
@@ -100,7 +106,7 @@ scan_token :: proc(s: ^Scanner) {
 
                 if s.curr >= len(s.source) {
                     fmt.eprintln("Missing closing brackets for multi line comments")
-                    return
+                    had_error = true
                 }
             }
             break;
@@ -125,6 +131,7 @@ scan_token :: proc(s: ^Scanner) {
         }
         
         fmt.eprintln("Unexpected character", s.line)
+        had_error = true
     }
 }
 
@@ -172,6 +179,7 @@ parse_digit :: proc(s: ^Scanner) {
     str, str_err := strings.substring(s.source, s.start, s.curr)
     if !str_err {
         fmt.eprintln("Could not parse the subtring of source to number")
+        had_error = true
         return
     }
     
@@ -180,6 +188,8 @@ parse_digit :: proc(s: ^Scanner) {
     literal, lit_err = strconv.parse_f64(str)
     if !lit_err {
         fmt.eprintln("Could not parse the string into number literal")
+        had_error = true
+        return
     }
 
     add_token(s, .NUMBER, literal)
@@ -194,6 +204,7 @@ parse_string :: proc(s: ^Scanner) {
 
     if s.curr >= len(s.source) {
         fmt.eprintln("Unterminated string")
+        had_error = true
         return
     }
 
@@ -216,6 +227,7 @@ parse_identifier :: proc(s: ^Scanner) {
     str, err := strings.substring(s.source, s.start, s.curr)
     if !err {
         fmt.eprintln("Could not parse the lexeme")
+        had_error = true
         return
     }
 
@@ -235,6 +247,7 @@ add_token_noval :: proc(s: ^Scanner, type: TokenType) {
     lexeme, err := strings.substring(s.source, s.start, s.curr)
     if !err {
         fmt.eprintln("Could not parse the lexeme")
+        had_error = true
         return
     }
 
@@ -252,6 +265,7 @@ add_token_val :: proc(s: ^Scanner, type: TokenType, literal: Value) {
     lexeme, err := strings.substring(s.source, s.start, s.curr)
     if !err {
         fmt.eprintln("Could not parse the lexeme")
+        had_error = true
         return
     }
     
@@ -266,26 +280,6 @@ add_token_val :: proc(s: ^Scanner, type: TokenType, literal: Value) {
 }
 
 // Helpers
-@(private="file")
-load_file :: proc(filepath: string) -> (string, vmem.Arena) {
-    arena: vmem.Arena
-    arena_err := vmem.arena_init_growing(&arena)
-    
-    if arena_err != nil {
-        fmt.eprintln("Error creating arena allocator")
-        os.exit(1)
-    }
-    arena_alloc := vmem.arena_allocator(&arena)
-
-    file, err := os.read_entire_file(filepath, arena_alloc)
-    if err != os.ERROR_NONE {
-        fmt.eprintln("Could not open the file", filepath)
-        os.exit(1)
-    }
-    
-    return string(file), arena
-}
-
 @(private="file")
 is_digit :: proc(b: u8) -> bool { return b >= '0' && b <= '9' }
 

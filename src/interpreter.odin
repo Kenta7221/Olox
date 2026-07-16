@@ -4,62 +4,86 @@ import "core:fmt"
 import "core:strings"
 
 Interpreter :: struct {
-    environment: ^Environment,
+    env: ^Env,
+    globals: ^Env,
+    all_env: [dynamic]^Env,
     had_runtime_error: bool,
-    prints: [dynamic]string // TEMP
+}
+
+Exec_Result :: struct {
+    returning: bool,
+    value: Value
 }
 
 interpreter_init :: proc() -> (i: Interpreter) {
-    i.environment = environment_init()
-    i.prints = make([dynamic]string) // TEMP
+    i.all_env = make([dynamic]^Env)
+    i.env = env_init(&i.all_env)
+    i.globals = env_init(&i.all_env)
     return
 }
 
 interpreter_delete :: proc(i: ^Interpreter) {
-    delete(i.prints) // TEMP
-    delete(i.environment.values)
+    for env in i.all_env {
+        delete(env.values)
+        free(env)
+    }
+    delete(i.all_env)
 }
 
 interpret :: proc(i: ^Interpreter, stmts: [dynamic]^Stmt) {
     for stmt in stmts do execute(i, stmt)
 }
 
-execute :: proc(i: ^Interpreter, stmt: ^Stmt) {
-    switch s in stmt^ {
+execute :: proc(i: ^Interpreter, stmt: ^Stmt) -> Exec_Result {
+    switch &s in stmt^ {
     case Stmt_Expr:
         evaluate(i, s.expr)
     case Stmt_Print:
         val := evaluate(i, s.expr)
-        when ODIN_DEBUG { // TEMP
-            append_elem(&i.prints, stringify(val))
-        } else {
-            fmt.println(stringify(val))
-        }        
+        fmt.println(stringify(val))
     case Stmt_Var:
         val: Value = nil
         if s.initializer != nil do val = evaluate(i, s.initializer)
-        environment_define(i.environment, s.name.lexeme, val)
+        env_define(i.env, s.name.lexeme, val)
     case Stmt_Block:
-        execute_block(i, s.stmts, environment_init(i.environment))
+        execute_block(i, s.stmts, env_init(&i.all_env, i.env))
     case Stmt_If:
         if is_truthy(evaluate(i, s.cond)) {
-            execute(i, s.then_branch)
+            return execute(i, s.then_branch)
         } else if s.else_branch != nil {
-            execute(i, s.else_branch)
+            return execute(i, s.else_branch)
         }
     case Stmt_While:
-        for is_truthy(evaluate(i, s.cond)) do execute(i, s.body)
+        for is_truthy(evaluate(i, s.cond)) {
+            result := execute(i, s.body)
+            if result.returning do return result
+        }
+    case Stmt_Function:
+        fn := new(Lox_Function)
+        fn^ = Lox_Function{
+            declaration = &s,
+            closure     = i.env,
+        }
+        env_define(i.env, s.name.lexeme, fn)
+    case Stmt_Return:
+        value := evaluate(i, s.value) if s.value != nil else nil
+        return Exec_Result{true, value}
     }
+
+    return Exec_Result{}
 }
 
-execute_block :: proc(i: ^Interpreter, statements: [dynamic]^Stmt, environment: ^Environment) {
-    previous := i.environment
-    defer i.environment = previous
+execute_block :: proc(i: ^Interpreter, statements: [dynamic]^Stmt, env: ^Env) -> Exec_Result {
+    previous := i.env
+    defer i.env = previous
 
-    i.environment = environment
+    i.env = env
     for stmt in statements {
-        execute(i, stmt)
+        result := execute(i, stmt)
+        if result.returning do return result
     }
+
+    return Exec_Result{}
 }
 
 evaluate :: proc(i: ^Interpreter, expr: ^Expr) -> Value {
@@ -70,13 +94,15 @@ evaluate :: proc(i: ^Interpreter, expr: ^Expr) -> Value {
         return evaluate(i, e.expr)
     case Expr_Unary:
         return evaluate_unary(i, e)
+    case Expr_Call:
+        return evaluate_call(i, e)
     case Expr_Literal:
         return e.val
     case Expr_Var:
-        return environment_get(i, i.environment, e.name)
+        return env_get(i, i.env, e.name)
     case Expr_Ass:
         value := evaluate(i, e.expr)
-        environment_set(i, i.environment, e.name, value)
+        env_set(i, i.env, e.name, value)
         return value
     case Expr_Logical:
         return evaluate_logical(i, e)
@@ -95,6 +121,48 @@ evaluate_unary :: proc(i: ^Interpreter, expr: Expr_Unary) -> Value {
         return !is_truthy(right)
     }
     
+    return nil
+}
+
+evaluate_call :: proc(i: ^Interpreter, expr: Expr_Call) -> Value {
+    callee := evaluate(i, expr.calle)
+
+    args := make([dynamic]Value)
+    for arg in expr.args do append_elem(&args, evaluate(i, arg))
+
+    fn, ok := callee.(^Lox_Function)
+    if !ok {
+        runtime_error(i, expr.paren, "Can only call functions and classes.")
+        return nil
+    }
+
+    if len(args) != check_arinity(callee) {
+        runtime_error(i, expr.paren, fmt.tprintf(
+            "Expected %d arguments but got %d.", check_arinity(callee), len(args)))
+        return nil
+    }
+
+    return call(i, fn, args)
+}
+
+call :: proc(i: ^Interpreter, callee: Value, args: [dynamic]Value) -> Value {
+    #partial switch c in callee {
+    case ^Lox_Function:
+        return call_function(i, c, args)
+    case ^Native_Function:
+        return c.fn(args)
+    }
+    return nil
+}
+
+call_function :: proc(i: ^Interpreter, fn: ^Lox_Function, args: [dynamic]Value) -> Value {
+    env := env_init(&i.all_env, fn.closure)
+    for param, i in fn.declaration.params {
+        env_define(env, param.lexeme, args[i])
+    }
+
+    result := execute_block(i, fn.declaration.body, env)
+    if result.returning do return result.value
     return nil
 }
 
@@ -204,5 +272,10 @@ stringify :: proc(v: Value) -> string {
         return fmt.tprintf("%v", val)
         case:
         return "nil"
+    case ^Native_Function:
+    case ^Lox_Function:
+        return fmt.tprintf("<fn %v>", val.declaration.name.lexeme)
     }
+
+    return ""
 }

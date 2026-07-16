@@ -21,15 +21,38 @@ TokenType :: enum {
     EOF
 }
 
-Value :: union {
-    string,
-    f64,
-    bool
-}
-
 Token :: struct {
     type:   TokenType,
     lexeme: string,
     literal: Value,
     line :  int
+}
+
+Lox_Function :: struct {
+    declaration: ^Stmt_Function, // TEMP,
+    closure: ^Env
+}
+
+Native_Function :: struct {
+    arity: int,
+    fn: proc(args: [dynamic]Value) -> Value
+}
+
+check_arinity :: proc(calle: Value) -> int {
+    #partial switch c in calle {
+        case ^Lox_Function:
+        return len(c.declaration.params)
+        case ^Native_Function:
+        return c.arity
+    }
+
+    return 0
+}
+
+Value :: union {
+    string,
+    f64,
+    bool,
+    ^Lox_Function,
+    ^Native_Function
 }

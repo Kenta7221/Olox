@@ -2,7 +2,6 @@ package olox
 
 import "core:fmt"
 import "core:os"
-import "core:strings"
 import vmem "core:mem/virtual"
 
 Lox :: struct {
@@ -29,20 +28,15 @@ lox_init :: proc(filepath: string) -> (l: Lox) {
 
 lox_run :: proc(l: ^Lox) {
     // Step 1: Scan tokens
-    scan_tokens(&l.scanner)
-
-    // for token in l.scanner.tokens {
-    //     fmt.println(token)
-    // }
-    // fmt.println()
+    l.had_error = scan_tokens(&l.scanner)
+    if l.had_error do return
     
     // Step 2: Parse the tokens into an ast tree
     l.parser = parser_init(l.scanner.tokens)
-    stmts := parse(&l.parser)
-    defer delete(stmts)
+    parse(&l.parser)
     
     // Step 3: Interpret
-    interpret(&l.interp, stmts)
+    interpret(&l.interp, l.parser.all_stmts)
 }
 
 lox_delete :: proc(l: ^Lox) {

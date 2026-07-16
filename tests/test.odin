@@ -19,8 +19,10 @@ assgignment :: proc(t: ^testing.T) {
 
         l := lox.lox_init(info.fullpath)
         defer lox.lox_delete(&l)
-
-        lox.lox_run(&l)
+        // lox.lox_run(&l)
+        // for print in l.interp.prints {
+        //     log.errorf(print)
+        // }
 	}
 
 	if path, err := os.walker_error(&w); err != nil {

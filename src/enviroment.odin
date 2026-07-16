@@ -2,41 +2,46 @@ package olox
 
 import "core:fmt"
 
-Environment :: struct {
+Env :: struct {
     values: map[string]Value,
-    enclosing: ^Environment
+    enclosing: ^Env
 }
 
-environment_init :: proc(enclosing: ^Environment = nil) -> ^Environment {
-    env := new(Environment)
+env_init :: proc(all_env: ^[dynamic]^Env, enclosing: ^Env = nil) -> ^Env {
+    env := new(Env)
     env.values = make(map[string]Value)
     env.enclosing = enclosing
+    append_elem(all_env, env)
     return env
 }
 
-environment_define :: proc(env: ^Environment, name: string, value: Value) {
+env_delete :: proc(env: ^Env) {
+    
+}
+
+env_define :: proc(env: ^Env, name: string, value: Value) {
     env.values[name] = value
 }
 
-environment_get :: proc(i: ^Interpreter, env: ^Environment, name: Token) -> Value {
+env_get :: proc(i: ^Interpreter, env: ^Env, name: Token) -> Value {
     if v, ok := env.values[name.lexeme]; ok {
         return v
     }
 
-    if (env.enclosing != nil) do return environment_get(i, env.enclosing, name)
+    if (env.enclosing != nil) do return env_get(i, env.enclosing, name)
     
     runtime_error(i, name, fmt.tprintf("Undefined variable '%s'.", name.lexeme))
     return nil
 }
 
-environment_set :: proc(i: ^Interpreter, env: ^Environment, name: Token, value: Value) {
+env_set :: proc(i: ^Interpreter, env: ^Env, name: Token, value: Value) {
     if v, ok := env.values[name.lexeme]; ok {
         env.values[name.lexeme] = value
         return
     }
 
     if (env.enclosing != nil) {
-        environment_set(i, env.enclosing, name, value)
+        env_set(i, env.enclosing, name, value)
         return
     }
     
